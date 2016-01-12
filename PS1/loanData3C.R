@@ -1,6 +1,7 @@
 library(ggplot2)
 library(mvtnorm)
-# create small wrapper functions
+
+# create covariance matrix
 sigmaXY <- function(rho, sdX, sdY) {
   covTerm <- rho * sdX * sdY
   VCmatrix <- matrix(c(sdX^2, covTerm, covTerm, sdY^2), 
@@ -8,14 +9,14 @@ sigmaXY <- function(rho, sdX, sdY) {
   return(VCmatrix)
 }
 
+# generate random bivariate draws
 genBVN <- function(n = 1, seed = NA, muXY=c(0,1), sigmaXY=diag(2)) {
   if(!is.na(seed)) set.seed(seed)
   rdraws <- rmvnorm(n, mean = muXY, sigma = sigmaXY)
   return(rdraws)
 }
 
-
-
+# main function with undecided class added
 loanData <- function(noApproved, noDenied, noUndecided, muApproved, muDenied, muUndecided, sdApproved, 
                      sdDenied, sdUndecided, rhoApproved, rhoDenied, rhoUndecided, seed=1111) {
   sigmaApproved <- sigmaXY(rho=rhoApproved, sdX=sdApproved[1], sdY=sdApproved[2])
