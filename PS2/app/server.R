@@ -3,37 +3,39 @@ library(mvtnorm)
 library(shiny)
 library(extrafont)
 
+# create small wrapper functions
+sigmaXY <- function(rho, sdX, sdY) {
+  covTerm <- rho * sdX * sdY
+  VCmatrix <- matrix(c(sdX^2, covTerm, covTerm, sdY^2), 
+                     2, 2, byrow = TRUE)
+  return(VCmatrix)
+}
+
+genBVN <- function(n = 1, seed = NA, muXY=c(0,1), sigmaXY=diag(2)) {
+  if(!is.na(seed)) set.seed(seed)
+  rdraws <- rmvnorm(n, mean = muXY, sigma = sigmaXY)
+  return(rdraws)
+}
+
+
+# creating a function for all of this
+loanData <- function(noApproved, noDenied, muApproved, muDenied, sdApproved, 
+                     sdDenied, rhoApproved, rhoDenied, seed=1111) {
+  sigmaApproved <- sigmaXY(rho=rhoApproved, sdX=sdApproved[1], sdY=sdApproved[2])
+  sigmaDenied <- sigmaXY(rho=rhoDenied, sdX=sdDenied[1], sdY=sdDenied[2])
+  approved <- genBVN(noApproved, muApproved, sigmaApproved, seed = seed)
+  denied <- genBVN(noDenied, muDenied, sigmaDenied, seed = seed+1)
+  loanDf <- as.data.frame(rbind(approved,denied))
+  deny <- c(rep("Approved", noApproved), rep("Denied", noDenied))
+  target = c(rep(0, noApproved), rep(1, noDenied))
+  loanDf <- data.frame(loanDf, deny, target)
+  colnames(loanDf) <- c("PIratio", "solvency", "deny", "target")
+  return(loanDf)
+}
+
+
+
 shinyServer(function(input, output, session) {
-  
-  # create small wrapper functions
-  sigmaXY <- function(rho, sdX, sdY) {
-    covTerm <- rho * sdX * sdY
-    VCmatrix <- matrix(c(sdX^2, covTerm, covTerm, sdY^2), 
-                       2, 2, byrow = TRUE)
-    return(VCmatrix)
-  }
-  
-  genBVN <- function(n = 1, seed = NA, muXY=c(0,1), sigmaXY=diag(2)) {
-    if(!is.na(seed)) set.seed(seed)
-    rdraws <- rmvnorm(n, mean = muXY, sigma = sigmaXY)
-    return(rdraws)
-  }
-  
-  
-  # creating a function for all of this
-  loanData <- function(noApproved, noDenied, muApproved, muDenied, sdApproved, 
-                       sdDenied, rhoApproved, rhoDenied, seed=1111) {
-    sigmaApproved <- sigmaXY(rho=rhoApproved, sdX=sdApproved[1], sdY=sdApproved[2])
-    sigmaDenied <- sigmaXY(rho=rhoDenied, sdX=sdDenied[1], sdY=sdDenied[2])
-    approved <- genBVN(noApproved, muApproved, sigmaApproved, seed = seed)
-    denied <- genBVN(noDenied, muDenied, sigmaDenied, seed = seed+1)
-    loanDf <- as.data.frame(rbind(approved,denied))
-    deny <- c(rep("Approved", noApproved), rep("Denied", noDenied))
-    target = c(rep(0, noApproved), rep(1, noDenied))
-    loanDf <- data.frame(loanDf, deny, target)
-    colnames(loanDf) <- c("PIratio", "solvency", "deny", "target")
-    return(loanDf)
-  }
   
   
   # Combine the selected variables into a new data frame
@@ -58,6 +60,7 @@ shinyServer(function(input, output, session) {
     list(intercept = intercept, slope = slope, predictedLabels = predictedLabels)
   })
   
+  #load fonts before plotting
   loadfonts()
   output$plot1 <- renderPlot({
     par(mar = c(5.1, 4.1, 0, 1))
@@ -71,7 +74,7 @@ shinyServer(function(input, output, session) {
       geom_abline(intercept = datafit()$intercept, slope = datafit()$slope)
   })
   
-  
+  #plot of the contingency_matrix
   output$contingency_matrix <- renderTable({ 
     confMatrixFreq <- table(selectedData()$deny, datafit()$predictedLabels)
     confMatrixFreq
