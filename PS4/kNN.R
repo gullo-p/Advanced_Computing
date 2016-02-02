@@ -1,6 +1,6 @@
 library(mvtnorm)
 library(dplyr)
-
+library(plyr)
 #compute the mode of a vector x
 Mode <- function(x) {
   ux <- unique(x)
@@ -75,15 +75,17 @@ kNN <- function(features, labels, memory,
   # k elements
   neighbors <- apply(distMatrix, 1, order) 
   
-  # Compute the frequency of each class in the k nearest neighbors and return the matrix of probabilities
-  prob <- matrix(NA, nrow =noObs, ncol = length(unique(labels)) )
-  for (obs in 1:noObs) {
-    prob[obs, ] <- (as.data.frame(table(labels[neighbors[obs, 1:k]]))$Freq)/100 #controlla che non sia il contrario
-  
+  # Compute the frequency of the assigned class in the k nearest neighbors and return the vector of probabilities
+  prob <- rep(NA, nrow =noObs)
   predLabels <- rep(NA, noObs)
-  # predicted label
-  x <- as.vector(labels[neighbors[obs, 1:k]])
-  predLabels[obs] <- Mode(x) #computes the mode of the labels of the k-nn
+  for (obs in 1:noObs) {
+    # predicted label
+    x <- as.vector(labels[neighbors[1:k, obs]])
+    predLabels[obs] <- Mode(x) #computes the mode of the labels of the k-nn
+    
+    #frequency of the predicted label among the k-NN
+    prob[obs] <- count(labels[neighbors[1:k, obs]] ==predLabels[obs])/k 
+    
   }
   
   # return the results
@@ -132,7 +134,8 @@ genGaussMix <- function(noObs = c(100, 100),
 
 dataset <- genGaussMix()
 
-a <- kNN(dataset[,1:2], dataset[,4], k = 4, p= 2, type = "train")
+a <- kNN(dataset[,1:2], dataset[,4], k = 3, p= 2, type = "train")
 a$predLabels
 a$prob
 
+table(a$predLabels, dataset$y)
