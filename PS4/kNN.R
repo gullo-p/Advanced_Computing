@@ -1,11 +1,14 @@
 library(mvtnorm)
 library(dplyr)
 library(plyr)
-#compute the mode of a vector x
+
+
+#compute the mode of a vector x: it will be needed later
 Mode <- function(x) {
   ux <- unique(x)
   ux[which.max(tabulate(match(x, ux)))]
 }
+
 
 #function for the KNN
 kNN <- function(features, labels, memory, 
@@ -81,10 +84,10 @@ kNN <- function(features, labels, memory,
   for (obs in 1:noObs) {
     # predicted label
     x <- as.vector(labels[neighbors[1:k, obs]])
-    predLabels[obs] <- Mode(x) #computes the mode of the labels of the k-nn
+    predLabels[obs] <- as.numeric(names(sort(-table(x)))[1]) #computes the mode of the labels of the k-nn
     
     #frequency of the predicted label among the k-NN
-    prob[obs] <- count(labels[neighbors[1:k, obs]] ==predLabels[obs])/k 
+    prob[obs] <- max(count(labels[neighbors[1:k, obs]])$freq)/k
     
   }
   
@@ -134,7 +137,7 @@ genGaussMix <- function(noObs = c(100, 100),
 
 dataset <- genGaussMix()
 
-a <- kNN(dataset[,1:2], dataset[,4], k = 3, p= 2, type = "train")
+a <- kNN(dataset[,1:2], dataset[,4], k = 7, p= 2, type = "train")
 a$predLabels
 a$prob
 
