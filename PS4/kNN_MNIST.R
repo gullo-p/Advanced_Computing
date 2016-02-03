@@ -18,15 +18,34 @@ head(predictedClasses$prob)
 
 
 ### OPTIMIZATION OF k and p: 
-## Idea: first fix p = 2and look for the best k maximizing the accuracy resulting.
+## Idea: first fix p = 2 and look for the best k maximizing the accuracy resulting.
 ## After having chosen the best k we can optimize for p using the same technique.
 
-k <- c(1,3,5,7,9,11,15,17,23,25,35,45,55,83,101,151 ); 
+k <- c(3,5,7,9,11,15,17,23,25,35,45,55,83,101,151 ); 
 p <- 2
 
 
-errorTrain <- errorTest <- rep(NA, length(k))
-for (iter in 1:length(k)) {
+
+errorTest <- rep(NA, length(k))
+
+#do the first iteration separately to store the distMatrix, neighbors matrix and update the control value
+a <- kNN( X = MNIST_train[,2:257], 
+          y = MNIST_train[,2:257],
+          memory = MNIST_test[,1:256], 
+          k = 3, p = p, 
+          type = "predict")
+predictedClasses <- a$predLabels
+
+#store the needed distances and neighbors
+
+control <- a$control
+distMatrix <- a$distMatrix
+neighbors <- a$neighbors
+
+errorTrain[1] <- mean(predictedLabels!=datasetTest[,4])
+
+
+for (iter in 2:length(k)) {
   # get the test error
   predictedClasses <- kNN( X = MNIST_train[,2:257], 
                            y = MNIST_train[,2:257],
