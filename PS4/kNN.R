@@ -38,7 +38,7 @@ kNN <- function(features, labels, memory,
       
       # getting the probe for the current observation
         probe <- as.numeric(features[obs,])
-        robeExpanded <- matrix(probe, nrow = noObs, ncol = ncol(features), 
+        probeExpanded <- matrix(probe, nrow = noObs, ncol = ncol(features), 
                               byrow = TRUE)
      
       # computing distances between the probe and exemplars in the
@@ -91,7 +91,7 @@ kNN <- function(features, labels, memory,
     
   }
   
-  # return the results
+  # return the results 
   return(list(predLabels = predLabels, 
               prob = prob,
               distMatrix = distMatrix,
@@ -137,7 +137,7 @@ genGaussMix <- function(noObs = c(100, 100),
 
 dataset <- genGaussMix()
 start.time <- Sys.time()
-a <- kNN(dataset[,1:2], dataset[,4], k = 1, p= 2, type = "train")
+a <- kNN(dataset[,1:2], dataset[,4], k = 1, p= 2, type = "train", control = FALSE)
 end.time <- Sys.time()
 time.taken <- end.time - start.time
 time.taken

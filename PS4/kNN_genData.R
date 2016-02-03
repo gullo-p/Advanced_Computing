@@ -52,25 +52,26 @@ genSpirals <- function(N = 200,
 data <- genSpirals()
 
 #call the kNN function and get predLabels and prob
-a <- kNN(dataset[,1:2], dataset[,4], data[,1:2], k = 5, p = 2, type = "predict")
+a <- kNN(dataset[,1:2], dataset[,4], data[,1:2], k = 5, p = 2, type = "predict", control = FALSE)
 realdata <- cbind(data, a$predLabels, a$prob)
 
 #save in the right format in a csv file
 colnames(realdata) <- c("X1", "X2", "Y", "predLabels","prob")
 write.csv(realdata, "predictions.csv", row.names = FALSE)
 
+
 #save the pdf file
-cairo_pdf("dataPlot.pdf")
-print(
-  ggplot(data = realdata, 
-         aes(x = x1, y = x2, colour=y)) + 
+plot.pdf <- function(realdata){
+  pdf("dataPlot.pdf", width=4, height=4.5)
+  a <- ggplot(data = realdata, 
+              aes(x = X1, y = X2, colour=Y)) + 
     scale_colour_continuous(guide = FALSE) +
     geom_point() +
     ggtitle("Spirals") +
     xlab("x1") +
-    ylab("x2") +
-    stat_contour(mapping = predLabels, data = realdata)+
+    ylab("x2") +  #aggiungi stat_contour ??
     theme_bw()
-)
-dev.off()
-
+  print(a)
+  dev.off()
+}
+plot.pdf(realdata)
