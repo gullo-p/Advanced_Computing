@@ -1,6 +1,7 @@
 library(mvtnorm)
 library(dplyr)
 library(plyr)
+if(!require("flexclust")) install.packages("flexclust"); library(flexclust)
 
 
 #Function for the KNN. 
@@ -18,77 +19,73 @@ kNN <- function(features, labels, memory,
   is.string(type); assert_that(type %in% c("train", "predict"))
   is.count(k);
   assert_that(p %in% c(1: 100, Inf))
+  assert_that(k %% 2 != 0)
   if (type == "predict") {
     assert_that(not_empty(memory) & 
-                  ncol(memory) == ncol(features) & 
-                  nrow(memory) == length(labels))
+                  ncol(memory) == ncol(features))
+    assert_that(k <= nrow(features))
   }
   
   # Compute the distance between each point and all others 
   noObs <- nrow(features)
+  noMemory <- nrow(memory)
   
   if(control == FALSE){
     
-  # if we are making predictions on the test set based on the memory, 
-  # we compute distances between each test observation and observations
-  # in our memory
+    
     if (type == "train") {
       distMatrix <- matrix(NA, noObs, noObs)
-      for (obs in 1:noObs) {
       
-      # getting the probe for the current observation
-        probe <- as.numeric(features[obs,])
-        probeExpanded <- matrix(probe, nrow = noObs, ncol = ncol(features), 
-                              byrow = TRUE)
-     
-      # computing distances between the probe and exemplars in the
-      # training X
-        if (p != Inf) {
-          distMatrix[obs, ] <- (rowSums((abs(features - 
-                                               probeExpanded))^p) )^(1/p)
-        } else {
-          distMatrix[obs, ] <- apply(abs(features - probeExpanded), 1, max)
-        }  
-      }
+      if (p != Inf) {
+        distMatrix <- as.matrix(dist(features, method ="minkowski", diag = TRUE, upper = TRUE, p = p))
+      } else {
+        distMatrix <- as.matrix(dist(features, method ="maximum", diag = TRUE, upper = TRUE))
+      }  
     } else if (type == "predict") {
-      noMemory <- nrow(memory)
-      distMatrix <- matrix(NA, noObs, noMemory)
-      for (obs in 1:noObs) {
+       
+       distMatrix <- matrix(NA, noObs, noMemory)
       
-      # getting the probe for the current observation
-        probe <- as.numeric(features[obs,])
-        probeExpanded <- matrix(probe, nrow = noMemory, ncol = ncol(memory), 
-                                byrow = TRUE)
       
-      # computing distances between the probe and exemplars in the memory
-        if (p != Inf) {
-          distMatrix[obs, ] <- (rowSums((abs(memory - 
-                                             probeExpanded))^p) )^(1/p)
-        } else {
-          distMatrix[obs, ] <- apply(abs(memory - probeExpanded), 1, max)
-        }  
-      }
+       if (p != Inf) {
+         distMatrix <- as.matrix(dist2(memory, features, method = "minkowski", p=p))
+       } else {
+         distMatrix <- as.matrix(dist2(memory, features, method = "maximum"))
+       }  
     }
-   
+    
+  }    
   # Sort the distances in increasing numerical order and pick the first 
   # k elements
-    neighbors <- apply(distMatrix, 1, order) 
-    
+  neighbors <- apply(distMatrix, 1, order)
+
   #update the value of control  
-    control <- TRUE
-  }
+  control <- TRUE
   
-  # Compute the frequency of the assigned class in the k nearest neighbors and return the vector of probabilities
-  prob <- rep(NA, nrow =noObs)
-  predLabels <- rep(NA, noObs)
-  for (obs in 1:noObs) {
-    # predicted label
-    x <- as.vector(labels[neighbors[1:k, obs]])
-    predLabels[obs] <- as.numeric(names(sort(-table(x)))[1]) #computes the mode of the labels of the k-nn
+  if(type == "train"){
+    # Compute the frequency of the assigned class in the k nearest neighbors and return the vector of probabilities
+    prob <- rep(NA, nrow =noObs)
+    predLabels <- rep(NA, noObs)
+    for (obs in 1:noObs) {
+      # predicted label
+      x <- as.vector(labels[neighbors[1:k, obs]])
+      predLabels[obs] <- as.numeric(names(sort(-table(x)))[1]) #computes the mode of the labels of the k-nn
     
-    #frequency of the predicted label among the k-NN
-    prob[obs] <- max(count(labels[neighbors[1:k, obs]])$freq)/k
+      #frequency of the predicted label among the k-NN
+      prob[obs] <- max(count(labels[neighbors[1:k, obs]])$freq)/k
     
+    }
+  } else if(type == "predict"){
+    prob <- rep(NA, nrow = noMemory)
+    predLabels <- rep(NA, noMemory)
+    for(obs in 1:noMemory){
+      # predicted label
+      x <- as.vector(labels[neighbors[1:k, obs]])
+      predLabels[obs] <- as.numeric(names(sort(-table(x)))[1]) #computes the mode of the labels of the k-nn
+      
+      #frequency of the predicted label among the k-NN
+      prob[obs] <- max(count(labels[neighbors[1:k, obs]])$freq)/k
+      
+    }
   }
   
   # return the results 
@@ -97,53 +94,7 @@ kNN <- function(features, labels, memory,
               distMatrix = distMatrix,
               neighbors = neighbors,
               control = control
-              ))
-}
-
-genGaussMix <- function(noObs = c(100, 100), 
-                        noGaussians = 10, 
-                        mixtureProb = rep(1/noGaussians, noGaussians), 
-                        seed = 2222) {
-  
-  set.seed(seed)
-  
-  # producing means of our bivariate Gaussians
-  meansC1 <- rmvnorm(noGaussians, mean = c(1,0), sigma = diag(2))
-  meansC2 <- rmvnorm(noGaussians, mean = c(0,1), sigma = diag(2))
-  
-  # for each observation we first randomly select one Gaussian and then 
-  # generate a point according to the parameters of that Gaussian
-  whichGaussianC1 <- sample(nrow(meansC1), noObs[1], 
-                            mixtureProb, replace = TRUE)
-  whichGaussianC2 <- sample(nrow(meansC2), noObs[2], 
-                            mixtureProb, replace = TRUE)
-  
-  # now drawing samples from selected bivariate Gaussians
-  drawsC1 <- whichGaussianC1 %>% 
-    sapply(function(x) rmvnorm(1, mean = meansC1[x,], 
-                               sigma = diag(2)/5)) %>% t()
-  drawsC2 <- whichGaussianC2 %>% 
-    sapply(function(x) rmvnorm(1, mean = meansC2[x,], 
-                               sigma = diag(2)/5)) %>% t()
-  
-  # combining and labeling
-  dataset <- data.frame(rbind(drawsC1, drawsC2), 
-                        label = c(rep("C1", noObs[1]), rep("C2", noObs[2])), 
-                        y = c(rep(0, noObs[1]), rep(1, noObs[2])),
-                        stringsAsFactors = FALSE)
-  return(dataset)
+  ))
 }
 
 
-dataset <- genGaussMix()
-start.time <- Sys.time()
-a <- kNN(dataset[,1:2], dataset[,4], k = 1, p= 2, type = "train", control = FALSE)
-end.time <- Sys.time()
-time.taken <- end.time - start.time
-time.taken
-
-
-a$predLabels
-a$prob
-
-table(a$predLabels, dataset$label)

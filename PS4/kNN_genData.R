@@ -1,3 +1,5 @@
+
+#set working directory that contains "kNN.R" file
 setwd("/Users/guglielmo/Desktop/BGSE/winter_term/Adv_Computing/Advanced_Computing/PS4") #change the path to the directory PS4 of the github repo
 
 source("kNN.R")
@@ -7,7 +9,7 @@ source("kNN.R")
 # Denitsa's spirals 
 # ----
 
-genSpirals <- function(N = 200,
+genSpirals <- function(N = 500,
                        degrees = 570,
                        location = 90,
                        blend = 0.2,
@@ -23,6 +25,7 @@ genSpirals <- function(N = 200,
   
   #necessary packages
   if (!require("ggplot2")) install.packages("ggplot2"); library(ggplot2)
+  if (!require("akima")) install.packages("akima"); library(akima)
   
   # define some variables
   degrees2rad <- (2*pi)/360 #convert degrees to radiant
@@ -48,30 +51,50 @@ genSpirals <- function(N = 200,
 }
 
 
+#create a dataset for training using runif 
+#x1 <- as.data.frame(runif(100000, min=-10, max = 10))
+#x2 <- as.data.frame(runif(100000, min=-12, max = 12))
+#dataset <- cbind(x1, x2, c(rep(0,50000), rep(1,50000)))
+
 #create the data to test
 data <- genSpirals()
 
+
 #call the kNN function and get predLabels and prob
-a <- kNN(dataset[,1:2], dataset[,4], data[,1:2], k = 5, p = 2, type = "predict", control = FALSE)
+a <- kNN(features = data[,1:2], labels = data[,3], memory = NULL, k = 3, p = 2, type = "train", control = FALSE)
 realdata <- cbind(data, a$predLabels, a$prob)
+
 
 #save in the right format in a csv file
 colnames(realdata) <- c("X1", "X2", "Y", "predLabels","prob")
 write.csv(realdata, "predictions.csv", row.names = FALSE)
+table(a$predLabels, data$y)
+
+?interp
+#produce the grid to get the stat_contour
+grid <- interp(as.data.frame(realdata)$X1, as.data.frame(realdata)$X2, 
+                   as.data.frame(realdata)$Y)
+grid2 <- expand.grid(x=grid$x, y=grid$y)
+grid2$z <- as.vector(grid$z)
+grid2$z[grid2$z > 0.5] <- 1
 
 
 #save the pdf file
 plot.pdf <- function(realdata){
-  pdf("dataPlot.pdf", width=4, height=4.5)
+  pdf("plot.pdf", width=4, height=4.5)
   a <- ggplot(data = realdata, 
-              aes(x = X1, y = X2, colour=Y)) + 
-    scale_colour_continuous(guide = FALSE) +
+              aes(x = X1, y = X2, colour=Y, z = Y)) + 
     geom_point() +
     ggtitle("Spirals") +
     xlab("x1") +
-    ylab("x2") +  #aggiungi stat_contour ??
-    theme_bw()
-  print(a)
+    ylab("x2") +
+    theme_bw()+
+    stat_contour(data=na.omit(grid2), binwidth=1, 
+                 colour="red", aes(x=x, y=y, z=z))
+    print(a)
   dev.off()
 }
 plot.pdf(realdata)
+
+
+
