@@ -51,29 +51,38 @@ genSpirals <- function(N = 500,
 }
 
 
-#create a dataset for training using runif 
+#create a dataset for training using runif (will perform bad of course)
 #x1 <- as.data.frame(runif(100000, min=-10, max = 10))
 #x2 <- as.data.frame(runif(100000, min=-12, max = 12))
 #dataset <- cbind(x1, x2, c(rep(0,50000), rep(1,50000)))
 
-#create the data to test
+#create the data 
 data <- genSpirals()
 
+#split randomly into training and test data
+bound <- floor((nrow(data)/4)*3)         #define % of training and test set
 
-#call the kNN function and get predLabels and prob
-a <- kNN(features = data[,1:2], labels = data[,3], memory = NULL, k = 3, p = 2, type = "train", control = FALSE)
-realdata <- cbind(data, a$predLabels, a$prob)
+df <- data[sample(nrow(data)), ]           #sample rows 
+df.train <- df[1:bound, 1:2]                       #get training set
+df.test <- df[(bound+1):nrow(df), 1:2]
+df.label <- df[1:bound, 3]
+df.labtest <- df[(bound+1):nrow(df), 3]
+
+
+#call the kNN function and get predLabels and prob: we use k = 35 to get non-trivial results
+a <- kNN(features = df.train, labels = df.label, memory = df.test, k = 35, p = 2, type = "predict", control = FALSE)
+realdata <- cbind(df.test, df.labtest, a$predLabels, a$prob)
 
 
 #save in the right format in a csv file
 colnames(realdata) <- c("X1", "X2", "Y", "predLabels","prob")
 write.csv(realdata, "predictions.csv", row.names = FALSE)
-table(a$predLabels, data$y)
+table(a$predLabels, df.labtest)
 
-?interp
+
 #produce the grid to get the stat_contour
 grid <- interp(as.data.frame(realdata)$X1, as.data.frame(realdata)$X2, 
-                   as.data.frame(realdata)$Y)
+               as.data.frame(realdata)$predLabels)
 grid2 <- expand.grid(x=grid$x, y=grid$y)
 grid2$z <- as.vector(grid$z)
 grid2$z[grid2$z > 0.5] <- 1
@@ -91,10 +100,7 @@ plot.pdf <- function(realdata){
     theme_bw()+
     stat_contour(data=na.omit(grid2), binwidth=1, 
                  colour="red", aes(x=x, y=y, z=z))
-    print(a)
+  print(a)
   dev.off()
 }
 plot.pdf(realdata)
-
-
-
