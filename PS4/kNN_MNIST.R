@@ -36,8 +36,8 @@ for (i in 1:5) {    #repeat the experiment for 5 different split of the data
   
   for(iter in 1:length(k)){
     
-    a <- as.vector(knn( train = df.train, 
-                        cl = df.label,
+    a <- as.vector(knn( train = df.train,      #for each iteration run the knn function with a different value of k and 
+                        cl = df.label,         #and compute the error using the true labels
                         test = df.test, 
                         k = k[iter]))
     
@@ -51,7 +51,7 @@ for (i in 1:5) {    #repeat the experiment for 5 different split of the data
 optimalk <- rep(NA, 5)
 
 for(i in 1:5){
-  optimalk[i] <- which.min(errorTest[ ,i]) #gives the index of the minimum error, so our optimal k
+  optimalk[i] <- which.min(errorTest[ ,i]) #gives the index of the minimum error for each i, so our optimal k
 }
 
 #THIS FIRST TEST WOULD SUGGEST TO GO WITH k = 1, but it doesn't seem so truthful

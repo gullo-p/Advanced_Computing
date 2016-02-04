@@ -6,7 +6,7 @@ if(!require("flexclust")) install.packages("flexclust"); library(flexclust)
 
 #Function for the KNN. 
 #Remark: control is a dummy, which is set to TRUE if distMatrix has already been created,
-#so that in future calls of the function (important when optimizing over k) it won't be calculated again.
+#so that in future calls of the function (important when optimizing over k and p) it won't be calculated again.
 kNN <- function(features, labels, memory, 
                 k, p, type, control) {
   
@@ -19,14 +19,15 @@ kNN <- function(features, labels, memory,
   is.string(type); assert_that(type %in% c("train", "predict"))
   is.count(k);
   assert_that(p %in% c(1: 100, Inf))
-  assert_that(k %% 2 != 0)
+  assert_that(k %% 2 != 0)   #check that k is odd - just not to have any tie in the decisions
   if (type == "predict") {
     assert_that(not_empty(memory) & 
                   ncol(memory) == ncol(features))
-    assert_that(k <= nrow(features))
+    assert_that(k <= nrow(features)) #the number of nearest neighbors must not exceed the total number of observations
   }
   
-  # Compute the distance between each point and all others 
+  # Compute the distance between each point and all others using dist function if type = train,
+  # otherwise using dist2, which is the row-wise distance between two matrices.
   noObs <- nrow(features)
   noMemory <- nrow(memory)
   
@@ -58,12 +59,13 @@ kNN <- function(features, labels, memory,
   # k elements
   neighbors <- apply(distMatrix, 1, order)
 
-  #update the value of control  
+  #update the value of control so that in future calls we don't run the first part of the function
   control <- TRUE
   
   if(type == "train"){
-    # Compute the frequency of the assigned class in the k nearest neighbors and return the vector of probabilities
-    prob <- rep(NA, nrow =noObs)
+    # Compute both the predicted label and the frequency of the assigned class in the k nearest 
+    #neighbors and return the two resulting vectors 
+    prob <- rep(NA, noObs)
     predLabels <- rep(NA, noObs)
     for (obs in 1:noObs) {
       # predicted label
@@ -75,7 +77,7 @@ kNN <- function(features, labels, memory,
     
     }
   } else if(type == "predict"){
-    prob <- rep(NA, nrow = noMemory)
+    prob <- rep(NA, noMemory)
     predLabels <- rep(NA, noMemory)
     for(obs in 1:noMemory){
       # predicted label

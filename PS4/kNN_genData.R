@@ -69,8 +69,8 @@ df.label <- df[1:bound, 3]
 df.labtest <- df[(bound+1):nrow(df), 3]
 
 
-#call the kNN function and get predLabels and prob: we use k = 35 to get non-trivial results
-a <- kNN(features = df.train, labels = df.label, memory = df.test, k = 35, p = 2, type = "predict", control = FALSE)
+#call the kNN function and get predLabels and prob: we use k = 29 to get non-trivial results (some mislabelled points)
+a <- kNN(features = df.train, labels = df.label, memory = df.test, k = 29, p = 2, type = "predict", control = FALSE)
 realdata <- cbind(df.test, df.labtest, a$predLabels, a$prob)
 
 
@@ -88,11 +88,12 @@ grid2$z <- as.vector(grid$z)
 grid2$z[grid2$z > 0.5] <- 1
 
 
-#save the pdf file
+#save the pdf file. Remark: I wasn't able to remove the Y column on the right of the plot.
+#from the boundary we see that there are few mislabelled observations.
 plot.pdf <- function(realdata){
   pdf("plot.pdf", width=4, height=4.5)
   a <- ggplot(data = realdata, 
-              aes(x = X1, y = X2, colour=Y, z = Y)) + 
+              aes(x = X1, y = X2, colour=Y, z = predLabels)) + 
     geom_point() +
     ggtitle("Spirals") +
     xlab("x1") +
