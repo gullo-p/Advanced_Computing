@@ -1,12 +1,12 @@
 if (!require("formula.tools")) install.packages("formula.tools"); library(formula.tools)
 library(plyr)
 
+
 # define the three possible loss functions
 ME <- function(prob) { 
-  MissError <- 1 - apply(prob,1,max) 
+  MissError <- 1 - apply(prob,2,max) 
   return(MissError)
 }
-
 
 Gini <- function(prob) {
   Gini <- rowSums(prob*(1-prob)) 
@@ -19,14 +19,6 @@ Entropy <- function(prob) {
 }
 
 
-
-y <- c(1,2,3,3,4,1)
-z <- c(2,2,2,3,4,1)
-x <- count(y)$freq/6
-x
-s <- count(z)$freq/6
-cbind(x,s)
-
 # lets first develop a function that will partition the input space, 
 # cut the input space exhaustively, count errors for each cut and
 # choose the best cut
@@ -34,12 +26,15 @@ cbind(x,s)
 findThreshold <- function(X, y) { 
   
   noObs <- nrow(X)
-  errors <- matrix(NA, nrow = noObs-1, ncol = numfeatures) # a matrix that will store errors (either Gini, entropy or ME) for each split and for each feature
-  thresholds <- rep(NA, noObs-1)
-  splitLabels <- matrix(NA, ncol=2, nrow=noObs-1)
   numfeatures <- ncol(X)
+  miserror <- rep(NA, 2)     
+  #errors <- matrix(NA, nrow = noObs-1, ncol = numfeatures) # a matrix that will store errors (either Gini, entropy or ME) for each split and for each feature
+  #thresholds <- rep(NA, nrow = noObs-1, ncol = numfeatures)
+  splitLabels <- rep(NA,2)
   predictedClasses <- matrix(NA, ncol = numfeatures, nrow = noObs) # for every feature record the predicted classes of the observations
   freqClasses <- matrix(NA, ncol = 2, nrow = length(unique(y)))  # this matrix stores for each class the frequency of that class in the left and the right split
+  besterr <- 10000000  # initialize the first value for besterr with something very big (so that we can certainly improve it)
+  
   
   # for each feature compute the best split
   for (i in 1:numfeatures){
@@ -65,130 +60,97 @@ findThreshold <- function(X, y) {
       predictedClasses[X[,i] < potThres, i] <- modeLeft   # store the predicted classes for this split for feature i
       predictedClasses[X[,i] > potThres, i] <- modeRight
     
-        
+      # save the probabilities for the predicted labels
+      probleft <- length(y[which(y[] == modeleft)])/length(y)
+      probright <- length(y[which(y[] == moderight)])/length(y)
       
-      # error of this split
-      misError <- method()
+      # error of this split: this call gives the error on the two subsets defined by the current split
+      misError <- method(freqClasses)
+      
+      # total loss
+      if(method == Entropy | method == Gini){
+        err <- (idx/noObs)*misError[1] + ((noObs - idx)/noObs)*misError[2]
+      } else if(method == ME){
+        err <- misError[1] + misError[2]
+      }
     
-      # recording the accuracy, thresholds and labels of 
-      # the splitted interval
-      errors[idx, i] <- misError
-      thresholds[idx] <- potThres
-      splitLabels[idx,] <- c(predictedClasses[x < potThres][1],
-                             predictedClasses[x > potThres][1])
+      # computing the accuracy, thresholds and labels of 
+      # the splitted interval and updating them if we find a better split.
+      if(err < besterr){
+        besterr <- err
+        bestThreshold <- potThres
+        splitLabels <- c(predictedClasses[X[,i] < bestThreshold, i],
+                                predictedClasses[X[,i] > bestThreshold, i])
+        splitprob <- c(probleft, probright)
+        bestfeature <- i
+      }
+      #errors[idx, i] <- err
+      #thresholds[idx, i] <- potThres
+      #splitLabels[idx,i] <- c(predictedClasses[X[,i] < potThres, i][1],
+       #                       predictedClasses[X[,i] > potThres, i][1])
     }
+    
   }  
   # print(cbind(errors, thresholds, splitLabels))
   
   # next we find the minimum and the best threshold
-  minError <- min(errors)
-  bestThreshold <- thresholds[which(errors==minError)]
+  #minError <- rep(NA, numfeatures)
+  #minError <- apply(errors, 2, min)  # stores the minimum error done in each feature
+  #bestThreshold <- thresholds[which(errors==minError)]
+  
   # if more than 1 threshold has the same accuracy we choose one randomly
-  bestThreshold <- sample(bestThreshold, 1)
+  #bestThreshold <- sample(bestThreshold, 1)
   
   # what are the final labels of the best split?
-  labels <- splitLabels[which(thresholds==bestThreshold),]
+  labels <- splitLabels
+  prob <- splitprob
   # print(cbind(minError, bestThreshold, labels))
   
   return(list(thres = bestThreshold, 
-              err = minError, 
-              labels = labels))
+              err = besterr, 
+              labels = labels,
+              feat = bestfeature,
+              prob = splitprob))
 }
 
 
 # next we develop the main function that will use findThreshold function
-# to find split points locally but decide between them in a greedy way
-# based on a global error
+# calling it recursively on the splitted regions
 
-CTree <- function(X, y,  data, depth, minPoints, costFnc) { # poi modifica X e y in formula
+CTree <- function(formula, data, depth, minPoints, costFnc) { 
   
-  # setting up the initial boundaries - whole interval, with each
-  # iteration of k this will expand
-  boundaries <- c(0, 1)
+  X <- get.vars(rhs(formula))   # get the features from the formula 
+  y <- get.vars(lhs(formula))   # get the labels
   
-  # iterating for K times, i.e. we iteratively split input space in an 
-  # empirically greedy way, keeping only the best split and adding it 
-  # to the boundaries, we stop after doing this K times
-  for (k in 1:K) {
-    
-    # first we subset our input space according to the boundaries 
-    # found so far
-    intervals <- cut(X, boundaries, include.lowest = TRUE)
-    noIntervals <- length(levels(intervals))
-    
-    # then we go over each subset and see what is the best splitting
-    # point locally in this subset, using the findThreshold function
-    thresholds <- rep(NA, noIntervals)
-    errors <- rep(NA, noIntervals)
-    splitLabels <- matrix(NA, ncol=2, nrow=noIntervals)
-    for (iter in 1:noIntervals) {
-      x <- X[intervals==levels(intervals)[iter]]
-      y <- Y[intervals==levels(intervals)[iter]]
-      # we skip if there is a single element in the interval
-      # nothing to split there
-      if (length(y)>1) {
-        # find the local splitting point
-        results <- findThreshold(x, y)
-        thresholds[iter] <- results$thres
-        splitLabels[iter,] <- results$labels
-        
-        # add the potential threshold to our list of boundaries
-        boundariesHH <- c(boundaries, abs(results$thres))
-        boundariesHH <- sort(boundariesHH)
-        
-        # add the signs of the new threshold which indicates what 
-        # is the label of the of newly splitted interval
-        if (k==1) {
-          signsHH <- results$labels
-        } else {
-          signsHH <- append(signs, results$labels[1], 
-                            after=which(boundariesHH==results$thres)-2)
-          signsHH[which(boundariesHH==results$thres)] <- 
-            results$labels[2]
-        }
-        
-        # now we compute predictions with new boundaries based on the 
-        # potential split
-        predictedClasses <- cut(X, boundariesHH)
-        levels(predictedClasses) <- signsHH 
-        
-        # we compute a global, overall error rate for this local
-        # modification, we do not use the local error to evaluate 
-        # the splitting point
-        errors[iter] <- mean(predictedClasses != Y)
-      }
-    }
-    
-    # find the best threshold in this iteration, greedy strategy
-    minError <- min(errors, na.rm=TRUE)
-    bestThreshold <- thresholds[which(errors==minError)]
-    bestThreshold <- sample(bestThreshold, 1)
-    labels <- splitLabels[which(thresholds==bestThreshold),]
-    
-    # add the new threshold to our list of boundaries
-    boundaries <- c(boundaries, abs(bestThreshold))
-    boundaries <- sort(boundaries)
-    
-    # add the signs of the new threshold which indicates what is the label of the newly splitted interval
-    if (k==1) {
-      signs <- labels
-    } else {
-      signs <- append(signs, labels[1], 
-                      after=which(boundaries==bestThreshold)-2)
-      signs[which(boundaries==bestThreshold)] <- labels[2]
-    }
-  }
+  if (depth == 0) return()
+  if (nrow(X) < minPoints) return() 
+   
+  a <- findThreshold(X,y)
+  feat <- a$feat                # get the feature that produces the best split
+  thres <- a$thres              # get the (horizontal) threshold that produces the best split
+  prob <- a$prob                # get the fitted probabilites
+  labels <- a$labels            # get the labels
+  err <- a$err                  # get the misclassification error  
+
   
-  # get the final predicted classes
-  predictedClasses <- cut(X, boundaries)
-  levels(predictedClasses) <- signs 
+  X1 <- X[which(X[,feat] < thres), ]    # define the two subsets for calling recursively the function
+  X2 <- X[which(X[,feat] > thres), ]
+  y1 <- y[which(X[,feat] < thres)]      # save their labels
+  y2 <- y[which(X[,feat] > thres)]
   
-  # now we evaluate the final accuracy, after K iterations
-  misError <- mean(predictedClasses != Y)
+  data1 <- data.frame(cbind(X1,y1))     # define the new data frames
+  data2 <- data.frame(cbind(X2,y2))
+  
+  # update the depth
+  depth <- depth - 1                
   
   
-  return(list(predictedClasses = predictedClasses, 
-              misError = misError,
-              boundaries = boundaries,
-              signs = signs))
+  # call the function recursively on the two subsets just created
+  tree1 <- CTree(y1 ~ X1, data1, depth, minPoints, costFnc)
+  tree2 <- CTree(y2 ~ X2, data2, depth, minPoints, costFnc)
+  
+  
+  return(list(predictedlabels = labels, 
+              misError = err,
+              fittedprob = prob))
 }
