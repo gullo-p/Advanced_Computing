@@ -1,5 +1,6 @@
 if (!require("formula.tools")) install.packages("formula.tools"); library(formula.tools)
 if (!require("compiler")) install.packages("compiler");library(compiler)
+if (!require("assertthat")) install.packages("assertthat");library(assertthat)
 
 library(plyr)
 
@@ -30,9 +31,26 @@ Entropy <- function(prob) {
 # cut the input space exhaustively, count errors for each cut and
 # choose the best cut
 
-findThreshold <- function(X, y, method) { 
+findThreshold <- function(X, y, method, minPoints) { 
   
   noObs <- nrow(X)
+  if(noObs < minPoints) {  # if the dataset is too small then do not split it and return the predictions
+    predictedlabels <- as.numeric(names(sort(-table(y)))[1])
+    fittedprob <- max(count(y)$freq)/length(y)
+    if(method =="ME"){
+      err <- 1 - fittedprob
+    } else if(method == "Gini"){
+      err <- fittedprob*(1-fittedprob)
+    } else if(method == "Entropy"){
+      err <- -fittedprob*log(fittedprob)
+    }
+    return(list(thres = NULL, 
+                err = err, 
+                labels = predictedlabels,
+                feat = NULL,
+                prob = fittedprob))  
+    
+  }
   numfeatures <- ncol(X)
   misError <- rep(NA, 2)     
   splitLabels <- rep(NA,2)
@@ -42,18 +60,18 @@ findThreshold <- function(X, y, method) {
   # initialize the first value for besterr with something very big (so that we can certainly improve it)
   besterr <- 100000 
   
-  i <- 46
-  idx <- 600
+  i <- 1
+  idx <- 25
   # for each feature compute the best split
   for (i in 1:numfeatures){
-    print(i)
+    
     # first sort the values for each variable and then define the split
     X_ordered <- X[ order(X[,i]), ]
     
     # we go sequentially over each point and cut between that point and the
     # closest neighbor
     for (idx in 1:(noObs-1)) {
-      print(idx)
+      
       # locate a potential threshold for feature i, a split between two points
       potThres <- mean(X_ordered[idx:(idx+1), i])
       
@@ -121,14 +139,14 @@ findThreshold <- function(X, y, method) {
       # total loss
       err <- sum(misError)
       
-    
+      
       # computing the accuracy, thresholds and labels of 
       # the splitted interval and updating them if we find a better split.
       if(err < besterr){
         besterr <- err
         bestThreshold <- potThres
         splitLabels <- c(predictedClasses[X[,i] <= bestThreshold, i],
-                                predictedClasses[X[,i] > bestThreshold, i])
+                         predictedClasses[X[,i] > bestThreshold, i])
         splitprob <- c(probleft, probright)
         bestfeature <- i
       }
@@ -140,7 +158,7 @@ findThreshold <- function(X, y, method) {
   # what are the final labels of the best split?
   labels <- splitLabels
   prob <- splitprob
-
+  
   return(list(thres = bestThreshold, 
               err = besterr, 
               labels = labels,
@@ -154,45 +172,71 @@ findThreshold <- function(X, y, method) {
 
 CTree <- function(formula, data, depth, minPoints, costFnc) { 
   
-  X <- get.vars(rhs(formula))   # get the features from the formula 
-  y <- get.vars(lhs(formula))   # get the labels
+  # assert inputs
+  assert_that(not_empty(data))
+  #assert_that(is.count(depth))
+  assert_that(is.count(minPoints))
+  assert_that(costFnc %in% c("ME", "Gini", "Entropy"))
   
-  if (depth == 0) return()
-  if (nrow(X) < minPoints) return(list(predictedlabels = labels, 
-                                       misError = err,
-                                       fittedprob = prob)) 
-   
-  a <- findThreshold(X,y)
+  
+  
+  
+  # get labels and features from the formula 
+  Y.var <- get.vars(lhs(formula))      
+  X.vars <- get.vars(rhs(formula))     
+  y <- data[,Y.var]
+  X <- data[,X.vars]
+  
+  
+  # applt the findThreshold function to find the best split across all possible features
+  a <- findThreshold(X,y,method = costFnc, minPoints = minPoints)
   feat <- a$feat                # get the feature that produces the best split
   thres <- a$thres              # get the (horizontal) threshold that produces the best split
-  prob <- a$prob                # get the fitted probabilites
-  labels <- a$labels            # get the labels
+  fittedprob <- a$prob                # get the fitted probabilites
+  predictedlabels <- a$labels            # get the labels
   err <- a$err                  # get the misclassification error  
-
   
-  X1 <- X[which(X[,feat] < thres), ]    # define the two subsets for calling recursively the function
+  
+  # if there are no sufficient points, or if the depth is reached, don't split anymore and return the results
+  if (nrow(X) < minPoints | depth == 0) return(list(predictedlabels = predictedlabels, 
+                                                    fittedprob = fittedprob
+  )) 
+  
+  
+  
+  
+  X1 <- X[which(X[,feat] <= thres), ]      # define the two subsets for calling recursively the function
+  rows <- which(X[,feat] <= thres)  # save the row indices
+  
   X2 <- X[which(X[,feat] > thres), ]
-  y1 <- y[which(X[,feat] < thres)]      # save their labels
+  y1 <- y[which(X[,feat] <= thres)]      # save their labels
   y2 <- y[which(X[,feat] > thres)]
   
-  data1 <- data.frame(cbind(X1,y1))     # define the new data frames
+  # define the new data frames
+  data1 <- data.frame(cbind(X1,y1)) 
+  data1$y <- data1$y1
+  data1$y1 <- NULL
   data2 <- data.frame(cbind(X2,y2))
+  data2$y <- data2$y2
+  data2$y2 <- NULL
   
-  # update the depth
-  depth <- depth - 1                
+  
   
   
   # call the function recursively on the two subsets just created
-  tree1 <- CTree(y1 ~ X1, data1, depth, minPoints, costFnc)
-  tree2 <- CTree(y2 ~ X2, data2, depth, minPoints, costFnc)
+  tree1 <- CTree(formula, data1, depth= depth -1, minPoints, costFnc)
+  tree2 <- CTree(formula, data2, depth= depth -1, minPoints, costFnc)
+  
+  # saving predicted labels and fitted probabilities of the two subsets
+  predictedlabels[rows] <- tree1$predictedlabels      
+  fittedprob[rows] <- tree1$fittedprob
+  predictedlabels[-rows] <- tree2$predictedlabels
+  fittedprob[-rows] <- tree2$fittedprob
   
   
-  return(list(predictedlabels = labels, 
-              misError = err,
-              fittedprob = prob))
+  return(list(predictedlabels = predictedlabels, fittedprob = fittedprob))  
 }
 
 
 
-
-findThreshold <- cmpfun(findThreshold)
+findThreshold <- cmpfun(findThreshold) 
