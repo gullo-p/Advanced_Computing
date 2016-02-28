@@ -19,7 +19,7 @@ Gini <- function(prob) {
 Entropy <- function(prob) {
   for(i in 1:nrow(prob)){
     for(j in 1:ncol(prob)){
-      if(prob[i,j] ==0) prob[i,j] <- 0.00000001   # if there are 0's replace them with small numbers
+      if(prob[i,j] ==0) prob[i,j] <- 0.0001   # if there are 0's replace them with small numbers
     }
   }
   CrossEntropy <-  -colSums(prob*log(prob)) 
@@ -153,6 +153,8 @@ findThreshold <- function(X, y, method, minPoints) {
   
   # what are the final labels of the best split?
   labels <- splitLabels
+  
+  
   prob <- splitprob
   
   return(list(thres = bestThreshold, 
