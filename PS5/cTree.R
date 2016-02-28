@@ -1,4 +1,6 @@
 if (!require("formula.tools")) install.packages("formula.tools"); library(formula.tools)
+if (!require("compiler")) install.packages("compiler");library(compiler)
+
 library(plyr)
 
 
@@ -9,12 +11,17 @@ ME <- function(prob) {
 }
 
 Gini <- function(prob) {
-  Gini <- rowSums(prob*(1-prob)) 
+  Gini <- colSums(prob*(1-prob)) 
   return(Gini)
 }
 
 Entropy <- function(prob) {
-  CrossEntropy <- - rowSums(prob*log(prob)) 
+  for(i in 1:nrow(prob)){
+    for(j in 1:ncol(prob)){
+      if(prob[i,j] ==0) prob[i,j] <- 0.00000001   # if there are 0's replace them with small numbers
+    }
+  }
+  CrossEntropy <-  -colSums(prob*log(prob)) 
   return(CrossEntropy)
 }
 
@@ -23,89 +30,117 @@ Entropy <- function(prob) {
 # cut the input space exhaustively, count errors for each cut and
 # choose the best cut
 
-findThreshold <- function(X, y) { 
+findThreshold <- function(X, y, method) { 
   
   noObs <- nrow(X)
   numfeatures <- ncol(X)
-  miserror <- rep(NA, 2)     
-  #errors <- matrix(NA, nrow = noObs-1, ncol = numfeatures) # a matrix that will store errors (either Gini, entropy or ME) for each split and for each feature
-  #thresholds <- rep(NA, nrow = noObs-1, ncol = numfeatures)
+  misError <- rep(NA, 2)     
   splitLabels <- rep(NA,2)
   predictedClasses <- matrix(NA, ncol = numfeatures, nrow = noObs) # for every feature record the predicted classes of the observations
   freqClasses <- matrix(NA, ncol = 2, nrow = length(unique(y)))  # this matrix stores for each class the frequency of that class in the left and the right split
-  besterr <- 10000000  # initialize the first value for besterr with something very big (so that we can certainly improve it)
+  splitprob <- rep(NA,2)
+  # initialize the first value for besterr with something very big (so that we can certainly improve it)
+  besterr <- 100000 
   
-  
+  i <- 46
+  idx <- 600
   # for each feature compute the best split
   for (i in 1:numfeatures){
+    print(i)
+    # first sort the values for each variable and then define the split
+    X_ordered <- X[ order(X[,i]), ]
     
     # we go sequentially over each point and cut between that point and the
     # closest neighbor
     for (idx in 1:(noObs-1)) {
-    
+      print(idx)
       # locate a potential threshold for feature i, a split between two points
-      potThres <- mean(X[idx:(idx+1), i])
-    
+      potThres <- mean(X_ordered[idx:(idx+1), i])
+      
+      
       # compute the frequencies of the labels in the split
-      freqLeft <- count(y[X[,i] < potThres]$freq)/idx   # compute the frequency of each label on the left split
-      freqRight <- count(y[X[,i] > potThres]$freq)/(noObs - idx)  # same for right split
+      if(sum(count(y[X[,i] <= potThres])$freq) == 0){ # if the split is empty dont' do anything and go to the next one
+        next} else{
+          freqLeft <- count(y[X[,i] <= potThres])$freq/sum(count(y[X[,i] <= potThres])$freq)   # compute the frequency of each label on the left split    
+          if(nrow(count(y[X[,i] <= potThres])) < length(unique(y))) {  # if there are some labels with frequency 0, add them to the frequency table
+            true <- sort(unique(y))
+            table <- count(y[X[,i] <= potThres])
+            lab <- table$x
+            missinglab <- setdiff(true, lab)
+            missing <- cbind(missinglab, 0)   # adds frequency 0 for each of the missing label
+            colnames(missing) <- c("x", "freq")
+            table <- rbind(table,missing)
+            freqLeft <- table$freq/sum(count(y[X[,i] <= potThres])$freq)
+          } 
+          
+        }
+      
+      
+      # same for the right split
+      if(sum(count(y[X[,i] > potThres])$freq) == 0){ # if the split is empty don't do anything and go to the next one
+        next} else{
+          freqRight <- count(y[X[,i] > potThres])$freq/sum(count(y[X[,i] > potThres])$freq)   
+          if(nrow(count(y[X[,i] > potThres])) < length(unique(y))) {  # if there are some labels with frequency 0, add them to the frequency table
+            true <- sort(unique(y))
+            table <- count(y[X[,i] > potThres])
+            lab <- table$x
+            missinglab <- setdiff(true, lab)
+            missing <- cbind(missinglab, 0)   # adds frequency 0 for each of the missing label
+            colnames(missing) <- c("x", "freq")
+            table <- rbind(table,missing)
+            freqRight <- table$freq/sum(count(y[X[,i] > potThres])$freq) 
+          } 
+          
+        }
+      
+      
       freqClasses <- cbind(freqLeft, freqRight)
       
       # compute the predicted classes in the left and right split
-      lableft <- as.vector(y[X[,i] < potThres])
-      labright <- as.vector(y[X[,i] > potThres])
+      lableft <- y[X[,i] <= potThres]   
+      labright <- y[X[,i] > potThres]
       modeleft <- as.numeric(names(sort(-table(lableft)))[1]) # compute the mode label in left and right split
       moderight <- as.numeric(names(sort(-table(labright)))[1])
       
-      predictedClasses[X[,i] < potThres, i] <- modeLeft   # store the predicted classes for this split for feature i
-      predictedClasses[X[,i] > potThres, i] <- modeRight
-    
+      predictedClasses[X[,i] <= potThres, i] <- modeleft   # store the predicted classes for this split for feature i
+      predictedClasses[X[,i] > potThres, i] <- moderight
+      
       # save the probabilities for the predicted labels
-      probleft <- length(y[which(y[] == modeleft)])/length(y)
-      probright <- length(y[which(y[] == moderight)])/length(y)
+      probleft <- max(freqLeft) 
+      probright <- max(freqRight)
       
       # error of this split: this call gives the error on the two subsets defined by the current split
-      misError <- method(freqClasses)
+      if(method == "Entropy"){
+        misError <- Entropy(freqClasses)
+      } else if(method == "Gini"){
+        misError <- Gini(freqClasses)
+      } else if(method == "ME"){
+        misError <- ME(freqClasses)
+      }
       
       # total loss
-      if(method == Entropy | method == Gini){
-        err <- (idx/noObs)*misError[1] + ((noObs - idx)/noObs)*misError[2]
-      } else if(method == ME){
-        err <- misError[1] + misError[2]
-      }
+      err <- sum(misError)
+      
     
       # computing the accuracy, thresholds and labels of 
       # the splitted interval and updating them if we find a better split.
       if(err < besterr){
         besterr <- err
         bestThreshold <- potThres
-        splitLabels <- c(predictedClasses[X[,i] < bestThreshold, i],
+        splitLabels <- c(predictedClasses[X[,i] <= bestThreshold, i],
                                 predictedClasses[X[,i] > bestThreshold, i])
         splitprob <- c(probleft, probright)
         bestfeature <- i
       }
-      #errors[idx, i] <- err
-      #thresholds[idx, i] <- potThres
-      #splitLabels[idx,i] <- c(predictedClasses[X[,i] < potThres, i][1],
-       #                       predictedClasses[X[,i] > potThres, i][1])
+      
     }
     
   }  
-  # print(cbind(errors, thresholds, splitLabels))
-  
-  # next we find the minimum and the best threshold
-  #minError <- rep(NA, numfeatures)
-  #minError <- apply(errors, 2, min)  # stores the minimum error done in each feature
-  #bestThreshold <- thresholds[which(errors==minError)]
-  
-  # if more than 1 threshold has the same accuracy we choose one randomly
-  #bestThreshold <- sample(bestThreshold, 1)
   
   # what are the final labels of the best split?
   labels <- splitLabels
   prob <- splitprob
-  # print(cbind(minError, bestThreshold, labels))
-  
+
   return(list(thres = bestThreshold, 
               err = besterr, 
               labels = labels,
@@ -123,7 +158,9 @@ CTree <- function(formula, data, depth, minPoints, costFnc) {
   y <- get.vars(lhs(formula))   # get the labels
   
   if (depth == 0) return()
-  if (nrow(X) < minPoints) return() 
+  if (nrow(X) < minPoints) return(list(predictedlabels = labels, 
+                                       misError = err,
+                                       fittedprob = prob)) 
    
   a <- findThreshold(X,y)
   feat <- a$feat                # get the feature that produces the best split
@@ -154,3 +191,8 @@ CTree <- function(formula, data, depth, minPoints, costFnc) {
               misError = err,
               fittedprob = prob))
 }
+
+
+
+
+findThreshold <- cmpfun(findThreshold)
