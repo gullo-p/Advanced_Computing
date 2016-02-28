@@ -36,6 +36,7 @@ findThreshold <- function(X, y, method, minPoints) {
   noObs <- nrow(X)
   if(noObs < minPoints) {  # if the dataset is too small then do not split it and return the predictions
     predictedlabels <- as.numeric(names(sort(-table(y)))[1])
+    predictedlabels[is.na(predictedlabels)] <- 1 
     fittedprob <- max(count(y)$freq)/length(y)
     if(method =="ME"){
       err <- 1 - fittedprob
@@ -44,10 +45,7 @@ findThreshold <- function(X, y, method, minPoints) {
     } else if(method == "Entropy"){
       err <- -fittedprob*log(fittedprob)
     }
-    return(list(thres = NULL, 
-                err = err, 
-                labels = predictedlabels,
-                feat = NULL,
+    return(list(labels = predictedlabels,
                 prob = fittedprob))  
     
   }
@@ -60,8 +58,6 @@ findThreshold <- function(X, y, method, minPoints) {
   # initialize the first value for besterr with something very big (so that we can certainly improve it)
   besterr <- 100000 
   
-  i <- 1
-  idx <- 25
   # for each feature compute the best split
   for (i in 1:numfeatures){
     
@@ -170,13 +166,14 @@ findThreshold <- function(X, y, method, minPoints) {
 # next we develop the main function that will use findThreshold function
 # calling it recursively on the splitted regions
 
-CTree <- function(formula, data, depth, minPoints, costFnc) { 
+cTree <- function(formula, data, depth, minPoints, costFnc, test = NULL, type) { 
   
   # assert inputs
   assert_that(not_empty(data))
   #assert_that(is.count(depth))
   assert_that(is.count(minPoints))
   assert_that(costFnc %in% c("ME", "Gini", "Entropy"))
+  is.string(type); assert_that(type %in% c("train", "predict"));
   
   
   
@@ -198,12 +195,17 @@ CTree <- function(formula, data, depth, minPoints, costFnc) {
   
   
   # if there are no sufficient points, or if the depth is reached, don't split anymore and return the results
-  if (nrow(X) < minPoints | depth == 0) return(list(predictedlabels = predictedlabels, 
-                                                    fittedprob = fittedprob
-  )) 
+  if (nrow(X) < minPoints | depth == 0){ 
+    if (type == "predict"){
+      return(list(predictedlabels = predictedlabels, fittedprob = fittedprob, testLabels = predictedlabels)) 
+    
+  } else{
+      return(list(predictedlabels = predictedlabels, fittedprob = fittedprob)) 
+    
+  }
   
   
-  
+  }
   
   X1 <- X[which(X[,feat] <= thres), ]      # define the two subsets for calling recursively the function
   rows <- which(X[,feat] <= thres)  # save the row indices
@@ -220,12 +222,28 @@ CTree <- function(formula, data, depth, minPoints, costFnc) {
   data2$y <- data2$y2
   data2$y2 <- NULL
   
+  if(type == "predict"){
+    
+    test1 <- data.frame(test[which(test[,feat] <= thres),])
+    testrows <- which(test[,feat] <= thres)
+    colnames(test1) = colnames(X)
+   
+    test2 <- data.frame(test[-testrows,])
+    colnames(test2) = colnames(X)
+    
+    # call the function recursively on the two subsets just created
+    tree1 <- cTree(formula, data = data1 , depth = depth -1, minPoints, costFnc, test= test1, type)
+    tree2 <- cTree(formula, data = data2 , depth = depth -1, minPoints, costFnc, test = test2, type)
+    
+  } else{
+    
+    tree1 <- cTree(formula, data1, depth= depth -1, minPoints, costFnc, type = "train")
+    tree2 <- cTree(formula, data2, depth= depth -1, minPoints, costFnc, type = "train")
+  }
   
   
   
-  # call the function recursively on the two subsets just created
-  tree1 <- CTree(formula, data1, depth= depth -1, minPoints, costFnc)
-  tree2 <- CTree(formula, data2, depth= depth -1, minPoints, costFnc)
+  
   
   # saving predicted labels and fitted probabilities of the two subsets
   predictedlabels[rows] <- tree1$predictedlabels      
@@ -234,7 +252,20 @@ CTree <- function(formula, data, depth, minPoints, costFnc) {
   fittedprob[-rows] <- tree2$fittedprob
   
   
-  return(list(predictedlabels = predictedlabels, fittedprob = fittedprob))  
+  if(type == "predict"){
+    
+    testLabels <- rep(NA,nrow(test))
+    testLabels[testrows] <- tree1$testLabels
+    testLabels[-testrows] <- tree2$testLabels
+    
+    return(list(predictedlabels = predictedlabels, fittedprob = fittedprob , testLabels = testLabels))
+    
+  }else{
+    
+    return(list(predictedlabels = predictedlabels, fittedprob = fittedprob))
+    
+  }
+  
 }
 
 
