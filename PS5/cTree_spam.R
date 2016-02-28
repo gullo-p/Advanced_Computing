@@ -9,7 +9,7 @@ xnam <- paste("x", 1:57, sep="")   # rename the variables
 colnames(data) <- c(xnam, "y")
 fmla <- as.formula(paste("y ~ ", paste(xnam, collapse= "+")))  # get the right formula to call the function
 
-# Due to time issues, I will run the algorithm just with 200 observations that will be split in training and test
+# Due to time issues, I will run the algorithm just with 50 observations that will be split in training and test
 set.seed(5)                
 data<- data[sample(nrow(data), 50), ]
 train <- data[1:40, ]
