@@ -59,7 +59,7 @@ for(i in 1:iter){
   adaboost <- gbm(formula = fmla, distribution = "adaboost",
                               data = df.train2,
                               n.trees = i,
-                              interaction.depth = 2)
+                              interaction.depth = 2,shrinkage = 1, bag.fraction = 1)
   
   err_trainR[i] <- mean((predict(adaboost, df.train2, n.trees = i) > 0) != df.train2$y)
   err_testR[i] <- mean((predict(adaboost, df.test2, n.trees = i) > 0) != df.test2$y)
